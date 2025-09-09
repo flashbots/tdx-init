@@ -15,6 +15,7 @@ const (
 	mapperName   = "cryptdisk"
 	mapperDevice = "/dev/mapper/" + mapperName
 	httpPort     = "8080"
+	headerFile   = "/tmp/luksheader.img"
 )
 
 var devicePath string
