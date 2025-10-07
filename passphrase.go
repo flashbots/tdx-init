@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func computeMAC(passphrase string) ([]byte, error) {
+func computeMAC(passphrase string, headerFile string) ([]byte, error) {
 	headerData, err := os.ReadFile(headerFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read header: %v", err)
@@ -23,8 +23,8 @@ func computeMAC(passphrase string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func verifyMAC(passphrase string, expectedMAC []byte) error {
-	actualMAC, err := computeMAC(passphrase)
+func verifyMAC(passphrase string, headerFile string, expectedMAC []byte) error {
+	actualMAC, err := computeMAC(passphrase, headerFile)
 	if err != nil {
 		return err
 	}
@@ -69,6 +69,7 @@ func setupNewDisk(passphrase string) {
 
 	// Format with LUKS2 using detached header
 	// Leave 32769 sectors (16MB + 1 sector) free at start for header and MAC
+	// This creates a 16MB LUKS2 header file separately from the device
 	log.Println("Formatting disk with LUKS2...")
 	cmd := exec.Command("cryptsetup", "luksFormat", "--type", "luks2",
 		"--header", headerFile, "--align-payload", "32769", "-q", devicePath)
@@ -116,7 +117,7 @@ func setupNewDisk(passphrase string) {
 	}
 
 	// Compute MAC of the header
-	mac, err := computeMAC(passphrase)
+	mac, err := computeMAC(passphrase, headerFile)
 	if err != nil {
 		log.Fatalf("Error computing header MAC: %v\n", err)
 	}
@@ -181,7 +182,7 @@ func mountExistingDisk(passphrase string) {
 
 	// Verify the header MAC
 	log.Println("Verifying header integrity...")
-	if err := verifyMAC(passphrase, expectedMAC); err != nil {
+	if err := verifyMAC(passphrase, headerFile, expectedMAC); err != nil {
 		os.Remove(headerFile)
 		log.Fatalf("Error verifying header MAC: %v\n", err)
 	}
