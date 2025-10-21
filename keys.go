@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sync"
+	"time"
 )
 
 func waitForKey() {
@@ -43,6 +46,8 @@ func waitForKey() {
 	log.Printf("No LUKS container found, starting HTTP server on port %s...", httpPort)
 	log.Println("Waiting for key to be provided via HTTP...")
 
+	done := make(chan struct{})
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -68,13 +73,28 @@ func waitForKey() {
 		writeKey(key)
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Key received and stored successfully")
-		os.Exit(0) // Exit after successfully receiving the key
+
+		close(done)
 	})
 
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+httpPort, nil))
+	srv := &http.Server{Addr: ":" + httpPort}
+	go srv.ListenAndServe()
+
+	<-done
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx)
+
+	log.Printf("Key received via HTTP and written to disk!")
 }
 
+var keyMu sync.Mutex
+
 func writeKey(key string) {
+	keyMu.Lock()
+	defer keyMu.Unlock()
+
 	os.MkdirAll(sshDir, 0700)
 
 	// Set ownership of .ssh directory
