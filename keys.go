@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -88,7 +89,12 @@ func waitForKey() {
 	log.Printf("Key received via HTTP and written to disk!")
 }
 
+var keyMu sync.Mutex
+
 func writeKey(key string) {
+	keyMu.Lock()
+	defer keyMu.Unlock()
+
 	os.MkdirAll(sshDir, 0700)
 
 	// Set ownership of .ssh directory
