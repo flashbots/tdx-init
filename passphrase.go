@@ -36,34 +36,37 @@ func verifyMAC(passphrase string, headerFile string, expectedMAC []byte) error {
 	return nil
 }
 
-func setPassphrase() {
+func setPassphrase() error {
 	// Check if already mounted
 	if checkMounted() {
-		log.Fatalln("Error: Encrypted disk already setup")
+		return fmt.Errorf("encrypted disk already mounted")
 	}
 
 	// Check if key exists
 	if _, err := os.Stat(keyFile); err != nil {
-		log.Fatalln("Error: SSH key not set. Provide public key via HTTP first.")
+		return fmt.Errorf("SSH key not set, provide public key via HTTP first")
 	}
-
-	// Check if LUKS container exists
-	cmd := exec.Command("cryptsetup", "isLuks", devicePath)
-	isNewSetup := cmd.Run() != nil
 
 	fmt.Print("Enter passphrase: ")
 	var passphrase string
 	fmt.Scanln(&passphrase)
 
-	if isNewSetup {
-		setupNewDisk(passphrase)
-		setupMountDirs()
-	} else {
-		mountExistingDisk(passphrase)
+	// Check if LUKS container exists
+	cmd := exec.Command("cryptsetup", "isLuks", devicePath)
+	isLuks := cmd.Run() == nil
+
+	if isLuks {
+		return mountExistingDisk(passphrase)
 	}
+	// LUKS not found, format new disk
+
+	if err := setupNewDisk(passphrase); err != nil {
+		return err
+	}
+	return setupMountDirs()
 }
 
-func setupNewDisk(passphrase string) {
+func setupNewDisk(passphrase string) error {
 	// Clean up any existing header file
 	os.Remove(headerFile)
 
@@ -75,14 +78,14 @@ func setupNewDisk(passphrase string) {
 		"--header", headerFile, "--align-payload", "32769", "-q", devicePath)
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Error formatting disk: %v\n", err)
+		return fmt.Errorf("formatting disk: %v", err)
 	}
 
 	// Get the SSH key
 	key, err := os.ReadFile(keyFile)
 	if err != nil {
 		cleanupMount()
-		log.Fatalf("Error reading SSH key file: %v", err)
+		return fmt.Errorf("reading SSH key file: %v", err)
 	}
 
 	token := Token{
@@ -96,7 +99,7 @@ func setupNewDisk(passphrase string) {
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
 		cleanupMount()
-		log.Fatalf("Error marshaling token JSON: %v", err)
+		return fmt.Errorf("marshaling token JSON: %v", err)
 	}
 
 	// Import the token into the LUKS header
@@ -105,7 +108,7 @@ func setupNewDisk(passphrase string) {
 	cmd.Stdin = strings.NewReader(string(tokenJSON))
 	if err := cmd.Run(); err != nil {
 		cleanupMount()
-		log.Fatalf("Error importing token to LUKS header: %v\n", err)
+		return fmt.Errorf("importing token to LUKS header: %v", err)
 	}
 
 	// Write header to the device
@@ -113,49 +116,50 @@ func setupNewDisk(passphrase string) {
 	cmd = exec.Command("cryptsetup", "luksHeaderRestore", devicePath,
 		"--header-backup-file", headerFile)
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Error restoring header to device: %v\n", err)
+		return fmt.Errorf("restoring header to device: %v", err)
 	}
 
 	// Compute MAC of the header
 	mac, err := computeMAC(passphrase, headerFile)
 	if err != nil {
-		log.Fatalf("Error computing header MAC: %v\n", err)
+		return fmt.Errorf("computing header MAC: %v", err)
 	}
 
 	// Store the MAC in the 32769th sector (after the 16MB header)
 	cmd = exec.Command("dd", "of="+devicePath, "bs=512", "seek=32768", "count=1", "conv=notrunc")
 	cmd.Stdin = bytes.NewReader(mac)
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Error writing MAC to device: %v\n", err)
+		return fmt.Errorf("writing MAC to device: %v", err)
 	}
 
 	// Open the LUKS container using detached header
 	cmd = exec.Command("cryptsetup", "open", "--header", headerFile, devicePath, mapperName)
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Error opening LUKS device: %v\n", err)
+		return fmt.Errorf("opening LUKS device: %v", err)
 	}
 
 	// Create ext4 filesystem
 	log.Println("Creating ext4 filesystem...")
 	if err := exec.Command("mkfs.ext4", mapperDevice).Run(); err != nil {
 		exec.Command("cryptsetup", "close", mapperName).Run()
-		log.Fatalf("Error creating filesystem: %v\n", err)
+		return fmt.Errorf("creating filesystem: %v", err)
 	}
 
 	// Mount the filesystem
 	os.MkdirAll(mountPoint, 0755)
 	if err := exec.Command("mount", mapperDevice, mountPoint).Run(); err != nil {
 		exec.Command("cryptsetup", "close", mapperName).Run()
-		log.Fatalf("Error mounting filesystem: %v\n", err)
+		return fmt.Errorf("mounting filesystem: %v", err)
 	}
 
 	os.Remove(headerFile)
 
 	fmt.Println("Encrypted disk initialized and mounted successfully")
+	return nil
 }
 
-func mountExistingDisk(passphrase string) {
+func mountExistingDisk(passphrase string) error {
 	// Clean up any existing header file
 	os.Remove(headerFile)
 
@@ -164,7 +168,7 @@ func mountExistingDisk(passphrase string) {
 	cmd := exec.Command("cryptsetup", "luksHeaderBackup", devicePath,
 		"--header-backup-file", headerFile)
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Error extracting LUKS header: %v\n", err)
+		return fmt.Errorf("extracting LUKS header: %v", err)
 	}
 
 	// Read the expected MAC from the 32769th sector
@@ -172,11 +176,11 @@ func mountExistingDisk(passphrase string) {
 	cmd = exec.Command("dd", "if="+devicePath, "bs=512", "skip=32768", "count=1")
 	cmd.Stdout = &macBuf
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Error reading expected MAC from device: %v\n", err)
+		return fmt.Errorf("reading expected MAC from device: %v", err)
 	}
 	sector := macBuf.Bytes()
 	if len(sector) < 32 {
-		log.Fatalln("Error: Incomplete MAC read from device")
+		return fmt.Errorf("incomplete MAC read from device")
 	}
 	expectedMAC := sector[:32]
 
@@ -184,7 +188,7 @@ func mountExistingDisk(passphrase string) {
 	log.Println("Verifying header integrity...")
 	if err := verifyMAC(passphrase, headerFile, expectedMAC); err != nil {
 		os.Remove(headerFile)
-		log.Fatalf("Error verifying header MAC: %v\n", err)
+		return fmt.Errorf("verifying header MAC: %v", err)
 	}
 
 	// Open the LUKS container using the verified detached header
@@ -192,7 +196,7 @@ func mountExistingDisk(passphrase string) {
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
 		os.Remove(headerFile)
-		log.Fatalf("Error opening LUKS device: %v\n", err)
+		return fmt.Errorf("opening LUKS device: %v", err)
 	}
 
 	// Clean up header file
@@ -202,30 +206,33 @@ func mountExistingDisk(passphrase string) {
 	os.MkdirAll(mountPoint, 0755)
 	if err := exec.Command("mount", mapperDevice, mountPoint).Run(); err != nil {
 		exec.Command("cryptsetup", "close", mapperName).Run()
-		log.Fatalf("Error mounting filesystem: %v\n", err)
+		return fmt.Errorf("mounting filesystem: %v", err)
 	}
 
 	fmt.Println("Encrypted disk mounted successfully")
+	return nil
 }
 
-func setupMountDirs() {
+func setupMountDirs() error {
 	dirs := []string{"searcher", "delayed_logs", "searcher_logs"}
 	for _, dir := range dirs {
 		path := fmt.Sprintf("%s/%s", mountPoint, dir)
 		if err := os.MkdirAll(path, 0755); err != nil {
-			log.Fatalf("Error creating directory %s: %v\n", path, err)
+			return fmt.Errorf("creating directory %s: %v", path, err)
 		}
 	}
 
 	if err := os.Chown(fmt.Sprintf("%s/searcher", mountPoint), 1000, 1000); err != nil {
-		log.Fatalf("Error setting ownership for searcher: %v\n", err)
+		return fmt.Errorf("setting ownership for searcher: %v", err)
 	}
 	if err := os.Chown(fmt.Sprintf("%s/searcher_logs", mountPoint), 1000, 1000); err != nil {
-		log.Fatalf("Error setting ownership for searcher_logs: %v\n", err)
+		return fmt.Errorf("setting ownership for searcher_logs: %v", err)
 	}
 	if err := os.Chmod(fmt.Sprintf("%s/searcher_logs", mountPoint), 0755); err != nil {
-		log.Fatalf("Error setting permissions for searcher_logs: %v\n", err)
+		return fmt.Errorf("setting permissions for searcher_logs: %v", err)
 	}
+
+	return nil
 }
 
 func checkMounted() bool {
