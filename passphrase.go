@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -198,6 +199,38 @@ func mountExistingDisk(passphrase string) error {
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("opening LUKS device: %v", err)
+	}
+
+	log.Println("Resizing disk (if needed)...")
+
+	// Resize the LUKS container to use full device size, if physical disk size was increased
+	cmd = exec.Command("cryptsetup", "resize", "--header", headerFile, mapperName)
+	cmd.Stdin = strings.NewReader(passphrase)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("resizing LUKS device: %v", err)
+	}
+
+	// Run e2fsck to fix any filesystem issues before resizing
+	//
+	// Note: This takes ~10s on multi-TB disks, not too bad
+	// If optimizations will be required, we can skip all resizing steps,
+	// if size didn't change
+	cmd = exec.Command("e2fsck", "-yf", mapperDevice)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		var osErr *exec.ExitError
+		if errors.As(err, &osErr) && osErr.ExitCode() == 1 {
+			// Exit code 1 means filesystem errors were corrected
+			// which is acceptable in our case
+			log.Println("e2fsck: filesystem errors were corrected")
+		} else {
+			return fmt.Errorf("running 'e2fsck -yf %v', out: '%s': %v", mapperDevice, string(out), err)
+		}
+	}
+
+	// Resize ext4 filesystem to fill the cryptdisk
+	cmd = exec.Command("resize2fs", mapperDevice)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("running 'resize2fs %v': %v", mapperDevice, err)
 	}
 
 	// Mount the filesystem
