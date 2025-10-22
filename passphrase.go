@@ -160,7 +160,7 @@ func setupNewDisk(passphrase string) error {
 }
 
 func mountExistingDisk(passphrase string) error {
-	// Clean up any existing header file
+	// Remove existing header file, if any
 	os.Remove(headerFile)
 
 	// Extract the header from the device
@@ -170,6 +170,9 @@ func mountExistingDisk(passphrase string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("extracting LUKS header: %v", err)
 	}
+
+	// Remove header afterwards
+	defer os.Remove(headerFile)
 
 	// Read the expected MAC from the 32769th sector
 	var macBuf bytes.Buffer
@@ -187,7 +190,6 @@ func mountExistingDisk(passphrase string) error {
 	// Verify the header MAC
 	log.Println("Verifying header integrity...")
 	if err := verifyMAC(passphrase, headerFile, expectedMAC); err != nil {
-		os.Remove(headerFile)
 		return fmt.Errorf("verifying header MAC: %v", err)
 	}
 
@@ -195,12 +197,8 @@ func mountExistingDisk(passphrase string) error {
 	cmd = exec.Command("cryptsetup", "open", "--header", headerFile, devicePath, mapperName)
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
-		os.Remove(headerFile)
 		return fmt.Errorf("opening LUKS device: %v", err)
 	}
-
-	// Clean up header file
-	os.Remove(headerFile)
 
 	// Mount the filesystem
 	os.MkdirAll(mountPoint, 0755)
