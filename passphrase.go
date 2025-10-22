@@ -160,7 +160,7 @@ func setupNewDisk(passphrase string) error {
 	return nil
 }
 
-func mountExistingDisk(passphrase string) error {
+func mountExistingDisk(passphrase string) (err error) {
 	// Remove existing header file, if any
 	os.Remove(headerFile)
 
@@ -201,6 +201,13 @@ func mountExistingDisk(passphrase string) error {
 		return fmt.Errorf("opening LUKS device: %v", err)
 	}
 
+	defer func() {
+		// err is named return value
+		if err != nil {
+			exec.Command("cryptsetup", "close", mapperName).Run()
+		}
+	}()
+
 	log.Println("Resizing disk (if needed)...")
 
 	// Resize the LUKS container to use full device size, if physical disk size was increased
@@ -236,7 +243,6 @@ func mountExistingDisk(passphrase string) error {
 	// Mount the filesystem
 	os.MkdirAll(mountPoint, 0755)
 	if err := exec.Command("mount", mapperDevice, mountPoint).Run(); err != nil {
-		exec.Command("cryptsetup", "close", mapperName).Run()
 		return fmt.Errorf("mounting filesystem: %v", err)
 	}
 
