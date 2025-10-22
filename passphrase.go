@@ -232,13 +232,13 @@ func mountExistingDisk(passphrase string) (err error) {
 		return fmt.Errorf("running 'resize2fs %v': %v", mapperDevice, err)
 	}
 
-	// Mount the filesystem
+	log.Println("Mounting disk...")
 	os.MkdirAll(mountPoint, 0755)
 	if err := exec.Command("mount", mapperDevice, mountPoint).Run(); err != nil {
 		return fmt.Errorf("mounting filesystem: %v", err)
 	}
 
-	fmt.Println("Encrypted disk mounted successfully")
+	log.Println("Encrypted disk mounted successfully!")
 	return nil
 }
 
