@@ -1,15 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 const (
 	keyFile      = "/etc/searcher_key"
-	deviceGlob   = "/dev/disk/by-path/*10"
 	sshDir       = "/home/searcher/.ssh"
 	mountPoint   = "/persistent"
 	mapperName   = "cryptdisk"
@@ -34,12 +35,12 @@ func main() {
 	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin")
 
 	for {
-		devices, err := filepath.Glob(deviceGlob)
-		if err == nil && len(devices) > 0 {
-			devicePath = devices[0]
+		if d := lookupPersistentDisk(); d != "" {
+			devicePath = d
 			break
 		}
-		log.Println("Waiting for SCSI device to appear...")
+
+		fmt.Println("Waiting for persistent disk device to appear...")
 		time.Sleep(2 * time.Second)
 	}
 
@@ -51,4 +52,34 @@ func main() {
 	default:
 		log.Fatalf("Unknown command: %s\n", os.Args[1])
 	}
+}
+
+// lookupPersistentDisk tries to find the persistent disk device
+// by checking a set of glob patterns. Returns the first matching device path,
+// or empty string if none found.
+// It reads glob patterns from /etc/tdx-init/disk-glob if the file exists,
+// otherwise uses a default pattern for Azure persistent disks.
+func lookupPersistentDisk() string {
+	// Default glob is Azure persistent disk path
+	var globs = []string{"/dev/disk/by-path/*10"}
+
+	// As we call tdx-init from searchersh without any arguments,
+	// it's easier to read path from a file instead of flag/env.
+	if data, err := os.ReadFile("/etc/tdx-init/disk-glob"); err == nil {
+		if s := strings.TrimSpace(string(data)); s != "" {
+			globs = strings.Split(s, "\n")
+		}
+	}
+
+	for _, g := range globs {
+		devices, err := filepath.Glob(g)
+		if err == nil && len(devices) > 0 {
+			if len(devices) > 1 {
+				fmt.Printf("Warning: multiple devices found by glob '%v': %v\n", g, devices)
+			}
+			fmt.Printf("Using persistent disk device: %s\n", devices[0])
+			return devices[0]
+		}
+	}
+	return ""
 }
