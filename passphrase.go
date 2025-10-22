@@ -110,7 +110,7 @@ func setupNewDisk(passphrase string) {
 
 	// Write header to the device
 	log.Println("Writing header to disk...")
-	cmd = exec.Command("cryptsetup", "luksHeaderRestore", devicePath, 
+	cmd = exec.Command("cryptsetup", "luksHeaderRestore", devicePath,
 		"--header-backup-file", headerFile)
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Error restoring header to device: %v\n", err)
@@ -161,7 +161,7 @@ func mountExistingDisk(passphrase string) {
 
 	// Extract the header from the device
 	log.Println("Extracting LUKS header...")
-	cmd := exec.Command("cryptsetup", "luksHeaderBackup", devicePath, 
+	cmd := exec.Command("cryptsetup", "luksHeaderBackup", devicePath,
 		"--header-backup-file", headerFile)
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Error extracting LUKS header: %v\n", err)
