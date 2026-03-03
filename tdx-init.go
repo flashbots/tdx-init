@@ -60,10 +60,10 @@ func main() {
 // by checking a set of glob patterns. Returns the first matching device path,
 // or empty string if none found.
 // It reads glob patterns from /etc/tdx-init/disk-glob if the file exists,
-// and appends them to the default pattern for Azure persistent disks.
+// and appends them to the default patterns for Azure and GCP persistent disks.
 func lookupPersistentDisk() string {
-	// Default glob is Azure persistent disk path
-	var globs = []string{"/dev/disk/by-path/*10"}
+	// Default globs for persistent disk paths (Azure, GCP)
+	var globs = []string{"/dev/disk/by-path/*10", "/dev/disk/by-id/google-data"}
 
 	// As we call tdx-init from searchersh without any arguments,
 	// it's easier to read path from a file instead of flag/env.
