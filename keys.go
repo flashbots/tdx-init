@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -110,7 +111,14 @@ func writeKey(key string) {
 	}
 	defer f.Close()
 
-	if _, err := f.WriteString("no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 " + key + "\n"); err != nil {
+	// SSH key options file
+	options := "restrict"
+	if data, err := os.ReadFile("/etc/tdx-init/key-options"); err == nil {
+		if s := strings.TrimSpace(string(data)); s != "" {
+			options = s
+		}
+	}
+	if _, err := f.WriteString(options + " ssh-ed25519 " + key + "\n"); err != nil {
 		log.Fatalf("Error writing to authorized_keys: %v", err)
 	}
 
