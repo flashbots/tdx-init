@@ -60,10 +60,11 @@ func main() {
 // by checking a set of glob patterns. Returns the first matching device path,
 // or empty string if none found.
 // It reads glob patterns from /etc/tdx-init/disk-glob if the file exists,
-// and appends them to the default patterns for Azure and GCP persistent disks.
+// and prepends them to the default patterns (Azure, GCP, bare-metal virtio-blk).
 func lookupPersistentDisk() string {
-	// Default globs for persistent disk paths (Azure, GCP)
-	var globs = []string{"/dev/disk/by-path/*10", "/dev/disk/by-id/google-data"}
+	// Default globs for persistent disk paths: Azure (SCSI LUN 10), GCP, and bare-metal
+	// QEMU/libvirt hosts, which attach the disk as virtio-blk with serial "persistent"
+	var globs = []string{"/dev/disk/by-path/*10", "/dev/disk/by-id/google-data", "/dev/disk/by-id/virtio-persistent"}
 
 	// As we call tdx-init from searchersh without any arguments,
 	// it's easier to read path from a file instead of flag/env.

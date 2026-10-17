@@ -18,3 +18,12 @@ tdx-init set-passphrase   # Set up or mount an encrypted disk with passphrase
 
 - `tdx-init wait-for-key` should be called during the init process (before anything requiring peristant storage is mounted)
 - `tdx-init set-passphrase` should be called after the SSH key has been established directly by the searcher through an authenticated channel
+
+## Persistent disk
+
+The first existing match of these globs is used as the persistent disk:
+
+1. Patterns listed in `/etc/tdx-init/disk-glob` (one per line), if the file exists
+2. `/dev/disk/by-path/*10`: Azure, SCSI LUN 10
+3. `/dev/disk/by-id/google-data`: GCP
+4. `/dev/disk/by-id/virtio-persistent`: bare-metal QEMU/libvirt, a virtio-blk disk with serial `persistent`
