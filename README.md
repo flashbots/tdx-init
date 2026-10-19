@@ -27,3 +27,7 @@ The first existing match of these globs is used as the persistent disk:
 2. `/dev/disk/by-path/*10`: Azure, SCSI LUN 10
 3. `/dev/disk/by-id/google-data`: GCP
 4. `/dev/disk/by-id/virtio-persistent`: bare-metal QEMU/libvirt, a virtio-blk disk with serial `persistent`
+
+Layout of a newly formatted disk: the LUKS2 header in the first 16 MiB, the header's MAC in sector 32768, and
+the encrypted data from 17 MiB on, with 4 KiB crypt sectors. Disks formatted by earlier versions (data at
+sector 32769, 512-byte sectors) keep working: the data offset and sector size are read from the header.
