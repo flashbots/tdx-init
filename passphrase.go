@@ -76,10 +76,14 @@ func setupNewDisk(passphrase string) error {
 	// is 1MB-aligned and 4KB crypt sectors fit. A data offset of 32769 sectors, used before, misaligned every
 	// 4KB block by 512 bytes: on disks with 4KB physical sectors each small write became a read-modify-write.
 	// Disks formatted that way keep working: the data offset and sector size are read from the header.
+	// The header size is pinned to 16MB (2 x 16KB metadata + 16352KB keyslots, as before): cryptsetup would
+	// otherwise grow the keyslots area to the data offset, the MAC sector would land inside the header, and
+	// the header read back from the disk would no longer match its MAC.
 	// This creates a 16MB LUKS2 header file separately from the device
 	log.Println("Formatting disk with LUKS2...")
 	cmd := exec.Command("cryptsetup", "luksFormat", "--type", "luks2",
-		"--header", headerFile, "--align-payload", "34816", "--sector-size", "4096", "-q", devicePath)
+		"--header", headerFile, "--align-payload", "34816", "--sector-size", "4096",
+		"--luks2-metadata-size", "16384", "--luks2-keyslots-size", "16744448", "-q", devicePath)
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("formatting disk: %v", err)
