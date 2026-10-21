@@ -71,12 +71,11 @@ func setupNewDisk(passphrase string) error {
 	// Clean up any existing header file
 	os.Remove(headerFile)
 
-	// Format with LUKS2 using detached header
-	// Leave 32769 sectors (16MB + 1 sector) free at start for header and MAC
-	// This creates a 16MB LUKS2 header file separately from the device
+	// Align data at 17 MiB and cap the header at 16 MiB to leave sector 32768 for the MAC
 	log.Println("Formatting disk with LUKS2...")
 	cmd := exec.Command("cryptsetup", "luksFormat", "--type", "luks2",
-		"--header", headerFile, "--align-payload", "32769", "-q", devicePath)
+		"--header", headerFile, "--align-payload", "34816", "--sector-size", "4096",
+		"--luks2-metadata-size", "16384", "--luks2-keyslots-size", "16744448", "-q", devicePath)
 	cmd.Stdin = strings.NewReader(passphrase)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("formatting disk: %v", err)

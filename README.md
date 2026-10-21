@@ -27,3 +27,5 @@ The first existing match of these globs is used as the persistent disk:
 2. `/dev/disk/by-path/*10`: Azure, SCSI LUN 10
 3. `/dev/disk/by-id/google-data`: GCP
 4. `/dev/disk/by-id/virtio-persistent`: bare-metal QEMU/libvirt, a virtio-blk disk with serial `persistent`
+
+New disks use a 16 MiB LUKS2 header, a header MAC at byte offset 16 MiB, and encrypted data starting at 17 MiB with 4 KiB encryption sectors.
