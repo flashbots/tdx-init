@@ -71,15 +71,7 @@ func setupNewDisk(passphrase string) error {
 	// Clean up any existing header file
 	os.Remove(headerFile)
 
-	// Format with LUKS2 using detached header
-	// The first 16MB hold the header and sector 32768 the MAC; the data starts at 17MB (sector 34816), so it
-	// is 1MB-aligned and 4KB crypt sectors fit. A data offset of 32769 sectors, used before, misaligned every
-	// 4KB block by 512 bytes: on disks with 4KB physical sectors each small write became a read-modify-write.
-	// Disks formatted that way keep working: the data offset and sector size are read from the header.
-	// The header size is pinned to 16MB (2 x 16KB metadata + 16352KB keyslots, as before): cryptsetup would
-	// otherwise grow the keyslots area to the data offset, the MAC sector would land inside the header, and
-	// the header read back from the disk would no longer match its MAC.
-	// This creates a 16MB LUKS2 header file separately from the device
+	// Align data at 17 MiB and cap the header at 16 MiB to leave sector 32768 for the MAC
 	log.Println("Formatting disk with LUKS2...")
 	cmd := exec.Command("cryptsetup", "luksFormat", "--type", "luks2",
 		"--header", headerFile, "--align-payload", "34816", "--sector-size", "4096",
