@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -49,8 +50,8 @@ func setPassphrase() error {
 	}
 
 	fmt.Print("Enter passphrase: ")
-	var passphrase string
-	fmt.Scanln(&passphrase)
+	passphrase, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	passphrase = strings.TrimRight(passphrase, "\r\n")
 
 	// Check if LUKS container exists
 	cmd := exec.Command("cryptsetup", "isLuks", devicePath)
