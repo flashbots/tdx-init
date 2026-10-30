@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var keyRe = regexp.MustCompile(`^[A-Za-z0-9+/]{68}$`)
+
 func waitForKey() {
 	// Check if LUKS container exists
 	cmd := exec.Command("cryptsetup", "isLuks", devicePath)
@@ -36,6 +38,9 @@ func waitForKey() {
 		keyData, ok := token.UserData["metadata"]
 		if !ok {
 			log.Fatalln("Error: No metadata found in token")
+		}
+		if !keyRe.MatchString(keyData) {
+			log.Fatalln("Error: Invalid key format in token")
 		}
 
 		writeKey(string(keyData))
@@ -64,8 +69,7 @@ func waitForKey() {
 		}
 
 		key := string(body)
-		matched, _ := regexp.MatchString(`^[A-Za-z0-9+/]{68}$`, key)
-		if !matched {
+		if !keyRe.MatchString(key) {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, "Invalid key format, expected base64-encoded OpenSSH ed25519 public key")
 			return
