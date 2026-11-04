@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -50,8 +51,14 @@ func setPassphrase() error {
 	}
 
 	fmt.Print("Enter passphrase: ")
-	passphrase, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	passphrase, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return err
+	}
 	passphrase = strings.TrimRight(passphrase, "\r\n")
+	if passphrase == "" {
+		return fmt.Errorf("empty passphrase")
+	}
 
 	// Check if LUKS container exists
 	cmd := exec.Command("cryptsetup", "isLuks", devicePath)
